@@ -65,6 +65,9 @@
 #ifndef DEFAULT_ADMIN_USERNAME
 #define DEFAULT_ADMIN_USERNAME  "admin"
 #endif
+#ifndef DEFAULT_ADMIN_PASS
+#define DEFAULT_ADMIN_PASS     ""
+#endif
 
 #ifndef DEFAULT_WIFI_CONNECTION_TIMEOUT
 #define DEFAULT_WIFI_CONNECTION_TIMEOUT  10000  // minimum timeout in ms for WiFi to be connected.
@@ -100,6 +103,14 @@
 #ifndef DEFAULT_CONTROLLER_ENABLED
 #define DEFAULT_CONTROLLER_ENABLED   false     // Enable default controller by default
 #endif
+
+#ifndef DEFAULT_CONTROLLER_USER
+#define DEFAULT_CONTROLLER_USER    ""                                       // Default controller user
+#endif
+#ifndef DEFAULT_CONTROLLER_PASS
+#define DEFAULT_CONTROLLER_PASS    ""                                       // Default controller Password
+#endif
+
 // using a default template, you also need to set a DEFAULT PROTOCOL to a suitable MQTT protocol !
 #ifndef DEFAULT_PUB
 #define DEFAULT_PUB         "sensors/espeasy/%sysname%/%tskname%/%valname%" // Enter your pub
@@ -116,6 +127,10 @@
 #ifndef DEFAULT_SERVER_USEDNS
 #define DEFAULT_SERVER_USEDNS false             // true: Use hostname.  false: use IP
 #endif
+#ifndef DEFAULT_USE_EXTD_CONTROLLER_CREDENTIALS
+#define DEFAULT_USE_EXTD_CONTROLLER_CREDENTIALS   false                     // true: Allow longer user credentials for controllers
+#endif
+
 #ifndef DEFAULT_PORT
 #define DEFAULT_PORT        8080                // Enter your Server port value
 #endif
@@ -141,6 +156,9 @@
 #endif
 #ifndef DEFAULT_PIN_I2C_SCL
 #define DEFAULT_PIN_I2C_SCL              5
+#endif
+#ifndef DEFAULT_I2C_CLOCK_SPEED
+#define DEFAULT_I2C_CLOCK_SPEED          400000            // Use 100 kHz if working with old I2C chips
 #endif
 
 #ifndef DEFAULT_PIN_STATUS_LED

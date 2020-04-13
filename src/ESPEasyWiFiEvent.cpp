@@ -5,6 +5,8 @@
 
 #include "src/DataStructs/RTCStruct.h"
 
+#include "src/Helpers/ESPEasy_time_calc.h"
+
 #ifdef ESP32
 void WiFi_Access_Static_IP::set_use_static_ip(bool enabled) {
   _useStaticIp = enabled;
@@ -27,7 +29,7 @@ void setUseStaticIP(bool enabled) {
 
 void markGotIP() {
   lastGetIPmoment = millis();
-  wifiStatus      |= ESPEASY_WIFI_GOT_IP;
+  wifiStatus     &= ~ESPEASY_WIFI_GOT_IP;
   processedGotIP = false;
 }
 
@@ -57,7 +59,6 @@ void WiFiEvent(system_event_id_t event, system_event_info_t info) {
       last_ssid = (const char*) ssid_copy;
       lastConnectMoment = millis();
       processedConnect  = false;
-      wifiStatus       |= ESPEASY_WIFI_CONNECTED;
       break;
     }
     case SYSTEM_EVENT_STA_DISCONNECTED:
@@ -75,7 +76,6 @@ void WiFiEvent(system_event_id_t event, system_event_info_t info) {
         }
         processedDisconnect  = false;
         lastDisconnectReason = static_cast<WiFiDisconnectReason>(info.disconnected.reason);
-        wifiStatus          |= ESPEASY_WIFI_DISCONNECTED;
       }
       break;
     case SYSTEM_EVENT_STA_GOT_IP:
@@ -111,7 +111,6 @@ void WiFiEvent(system_event_id_t event, system_event_info_t info) {
 void onConnected(const WiFiEventStationModeConnected& event) {
   lastConnectMoment = millis();
   processedConnect  = false;
-  wifiStatus       |= ESPEASY_WIFI_CONNECTED;
   channel_changed   = RTC.lastWiFiChannel != event.channel;
   RTC.lastWiFiChannel      = event.channel;
   last_ssid         = event.ssid;
@@ -135,7 +134,6 @@ void onDisconnect(const WiFiEventStationModeDisconnected& event) {
     lastConnectedDuration = timeDiff(lastConnectMoment, lastDisconnectMoment);
   }
   lastDisconnectReason = event.reason;
-  wifiStatus           = ESPEASY_WIFI_DISCONNECTED;
 
   if (WiFi.status() == WL_CONNECTED) {
     // See https://github.com/esp8266/Arduino/issues/5912

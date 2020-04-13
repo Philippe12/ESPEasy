@@ -2,6 +2,12 @@
 #include "src/DataStructs/RTCStruct.h"
 #include "src/DataStructs/EventValueSource.h"
 #include "src/Globals/Device.h"
+#include "src/Globals/CPlugins.h"
+#include "src/Globals/NPlugins.h"
+#include "src/Globals/Plugins.h"
+#include "src/Helpers/ESPEasy_time_calc.h"
+
+#include "ESPEasy_plugindefs.h"
 
 #define TIMER_ID_SHIFT    28
 
@@ -141,6 +147,25 @@ void handle_schedule() {
 * These timers set a new scheduled timer, based on the old value.
 * This will make their interval as constant as possible.
 \*********************************************************************************************/
+void setNextTimeInterval(unsigned long& timer, const unsigned long step) {
+  timer += step;
+  const long passed = timePassedSince(timer);
+
+  if (passed < 0) {
+    // Event has not yet happened, which is fine.
+    return;
+  }
+
+  if (static_cast<unsigned long>(passed) > step) {
+    // No need to keep running behind, start again.
+    timer = millis() + step;
+    return;
+  }
+
+  // Try to get in sync again.
+  timer = millis() + (step - passed);
+}
+
 void setIntervalTimer(unsigned long id) {
   setIntervalTimer(id, millis());
 }
@@ -394,6 +419,7 @@ void process_plugin_task_timer(unsigned long id) {
   const systemTimerStruct timer_data = systemTimers[id];
   struct EventStruct TempEvent;
   TempEvent.TaskIndex = timer_data.TaskIndex;
+  TempEvent.BaseVarIndex =  timer_data.TaskIndex * VARS_PER_TASK;
   TempEvent.Par1      = timer_data.Par1;
   TempEvent.Par2      = timer_data.Par2;
   TempEvent.Par3      = timer_data.Par3;
@@ -415,7 +441,8 @@ void process_plugin_task_timer(unsigned long id) {
    */
   systemTimers.erase(id);
 
-  if (validDeviceIndex(deviceIndex)) {
+  if (validDeviceIndex(deviceIndex) && validUserVarIndex(TempEvent.BaseVarIndex)) {
+    TempEvent.sensorType = Device[deviceIndex].VType;
     String dummy;
     Plugin_ptr[deviceIndex](PLUGIN_TIMER_IN, &TempEvent, dummy);
   }
@@ -537,7 +564,7 @@ void schedule_task_device_timer_at_init(unsigned long task_index) {
     // Deepsleep is not enabled, add some offset based on the task index
     // to make sure not all are run at the same time.
     // This scheduled time may be overriden by the plugin's own init.
-    runAt += (task_index * 37) + Settings.MessageDelay;
+    runAt += (task_index * 37) + 100;
   } else {
     runAt += (task_index * 11) + 10;
   }
@@ -553,9 +580,9 @@ void schedule_all_task_device_timers() {
 
 #ifdef USES_MQTT
 void schedule_all_tasks_using_MQTT_controller() {
-  int ControllerIndex = firstEnabledMQTTController();
+  controllerIndex_t ControllerIndex = firstEnabledMQTT_ControllerIndex();
 
-  if (ControllerIndex < 0) { return; }
+  if (!validControllerIndex(ControllerIndex)) { return; }
 
   for (taskIndex_t task = 0; task < TASKS_MAX; task++) {
     if (Settings.TaskDeviceSendData[ControllerIndex][task] &&
@@ -614,12 +641,16 @@ void process_task_device_timer(unsigned long task_index, unsigned long lasttimer
 * Thus only use these when the result is not needed immediately.
 * Proper use case is calling from a callback function, since those cannot use yield() or delay()
 \*********************************************************************************************/
-void schedule_plugin_task_event_timer(byte DeviceIndex, byte Function, struct EventStruct *event) {
-  schedule_event_timer(TaskPluginEnum, DeviceIndex, Function, event);
+void schedule_plugin_task_event_timer(deviceIndex_t DeviceIndex, byte Function, struct EventStruct *event) {
+  if (validDeviceIndex(DeviceIndex)) {
+    schedule_event_timer(TaskPluginEnum, DeviceIndex, Function, event);
+  }
 }
 
-void schedule_controller_event_timer(byte ProtocolIndex, byte Function, struct EventStruct *event) {
-  schedule_event_timer(ControllerPluginEnum, ProtocolIndex, Function, event);
+void schedule_controller_event_timer(protocolIndex_t ProtocolIndex, byte Function, struct EventStruct *event) {
+  if (validProtocolIndex(ProtocolIndex)) {
+    schedule_event_timer(ControllerPluginEnum, ProtocolIndex, Function, event);
+  }
 }
 
 void schedule_notification_event_timer(byte NotificationProtocolIndex, byte Function, struct EventStruct *event) {
@@ -668,10 +699,10 @@ void process_system_event_queue() {
       Plugin_ptr[Index](Function, &EventQueue.front().event, tmpString);
       break;
     case ControllerPluginEnum:
-      CPluginCall(Index, Function, &EventQueue.front().event, tmpString);
+      CPluginCall(Index, static_cast<CPlugin::Function>(Function), &EventQueue.front().event, tmpString);
       break;
     case NotificationPluginEnum:
-      NPlugin_ptr[Index](Function, &EventQueue.front().event, tmpString);
+      NPlugin_ptr[Index](static_cast<NPlugin::Function>(Function), &EventQueue.front().event, tmpString);
       break;
   }
   EventQueue.pop_front();

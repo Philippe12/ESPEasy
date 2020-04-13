@@ -66,7 +66,7 @@ bool clientIPinSubnet() {
     // Could not determine subnet.
     return false;
   }
-  WiFiClient client(WebServer.client());
+  WiFiClient client(web_server.client());
   return ipInRange(client.remoteIP(), low, high);
 }
 
@@ -80,7 +80,7 @@ boolean clientIPallowed()
     // No subnet range determined, cannot filter on IP
     return true;
   }
-  WiFiClient client(WebServer.client());
+  WiFiClient client(web_server.client());
 
   if (ipInRange(client.remoteIP(), low, high)) {
     return true;
@@ -92,7 +92,7 @@ boolean clientIPallowed()
   }
   String response = F("IP blocked: ");
   response += formatIP(client.remoteIP());
-  WebServer.send(403, F("text/html"), response);
+  web_server.send(403, F("text/html"), response);
 
   if (loglevelActiveFor(LOG_LEVEL_ERROR)) {
     response += F(" Allowed: ");
@@ -116,5 +116,5 @@ void addIPaccessControlSelect(const String& name, int choice)
 {
   String options[3] = { F("Allow All"), F("Allow Local Subnet"), F("Allow IP range") };
 
-  addSelector(name, 3, options, NULL, NULL, choice, false);
+  addSelector(name, 3, options, NULL, NULL, choice);
 }

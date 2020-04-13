@@ -32,9 +32,12 @@ else:
     "USES_P052",  # SenseAir
     "USES_P056",  # SDS011-Dust
     "USES_P059",  # Encoder
+    "USES_P081",  # Cron
     "USES_P082",  # GPS
     "USES_P085",  # AcuDC24x
     "USES_P087",  # Serial Proxy
+    "USES_P094",  # CUL Reader
+    "USES_P095",  # TFT ILI9341
 
     "USES_C016",  # Cache Controller
     "USES_C018",  # TTN/RN2483
