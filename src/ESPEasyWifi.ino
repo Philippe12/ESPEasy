@@ -181,6 +181,7 @@ void WiFiConnectRelaxed() {
   // First try quick reconnect using last known BSSID and channel.
   bool useQuickConnect = RTC.lastBSSID[0] != 0 && RTC.lastWiFiChannel != 0 && wifi_connect_attempt < 3;
 
+  WiFi.setOutputPower(20.5);
   if (useQuickConnect) {
     WiFi.begin(ssid, passphrase, RTC.lastWiFiChannel, &RTC.lastBSSID[0]);
   } else {
