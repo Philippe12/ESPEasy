@@ -384,7 +384,7 @@ bool readyForSleep()
     return false;
   }
 
-  if (!WiFiConnected()) {
+  if (!NetworkConnected()) {
     // Allow 12 seconds to establish connections
     return timeOutReached(timerAwakeFromDeepSleep + 12000);
   }
@@ -795,7 +795,7 @@ void statusLED(bool traffic)
   else
   {
 
-    if (WiFiConnected())
+    if (NetworkConnected())
     {
       long int delta = timePassedSince(gnLastUpdate);
       if (delta>0 || delta<0 )
@@ -1303,6 +1303,14 @@ void ResetFactory()
   Settings.UseSerial		= DEFAULT_USE_SERIAL;
   Settings.BaudRate		= DEFAULT_SERIAL_BAUD;
 
+  Settings.ETH_Phy_Addr            = gpio_settings.eth_phyaddr;
+  Settings.ETH_Pin_mdc             = gpio_settings.eth_mdc;
+  Settings.ETH_Pin_mdio            = gpio_settings.eth_mdio;
+  Settings.ETH_Pin_power           = gpio_settings.eth_power;
+  Settings.ETH_Phy_Type            = gpio_settings.eth_phytype;
+  Settings.ETH_Clock_Mode          = gpio_settings.eth_clock_mode;
+  Settings.ETH_Wifi_Mode           = gpio_settings.eth_wifi_mode;
+
 /*
 	Settings.GlobalSync						= DEFAULT_USE_GLOBAL_SYNC;
 
@@ -1322,21 +1330,24 @@ void ResetFactory()
   addPredefinedRules(gpio_settings);
 
 #if DEFAULT_CONTROLLER
-  MakeControllerSettings(ControllerSettings);
-  safe_strncpy(ControllerSettings.Subscribe, F(DEFAULT_SUB), sizeof(ControllerSettings.Subscribe));
-  safe_strncpy(ControllerSettings.Publish, F(DEFAULT_PUB), sizeof(ControllerSettings.Publish));
-  safe_strncpy(ControllerSettings.MQTTLwtTopic, F(DEFAULT_MQTT_LWT_TOPIC), sizeof(ControllerSettings.MQTTLwtTopic));
-  safe_strncpy(ControllerSettings.LWTMessageConnect, F(DEFAULT_MQTT_LWT_CONNECT_MESSAGE), sizeof(ControllerSettings.LWTMessageConnect));
-  safe_strncpy(ControllerSettings.LWTMessageDisconnect, F(DEFAULT_MQTT_LWT_DISCONNECT_MESSAGE), sizeof(ControllerSettings.LWTMessageDisconnect));
-  str2ip((char*)DEFAULT_SERVER, ControllerSettings.IP);
-  ControllerSettings.setHostname(F(DEFAULT_SERVER_HOST));
-  ControllerSettings.UseDNS = DEFAULT_SERVER_USEDNS;
-  ControllerSettings.useExtendedCredentials(DEFAULT_USE_EXTD_CONTROLLER_CREDENTIALS);
-  ControllerSettings.Port = DEFAULT_PORT;
-  setControllerUser(0, ControllerSettings, F(DEFAULT_CONTROLLER_USER));
-  setControllerPass(0, ControllerSettings, F(DEFAULT_CONTROLLER_PASS));
+  {
+    // Place in a scope to have its memory freed ASAP
+    MakeControllerSettings(ControllerSettings);
+    safe_strncpy(ControllerSettings.Subscribe, F(DEFAULT_SUB), sizeof(ControllerSettings.Subscribe));
+    safe_strncpy(ControllerSettings.Publish, F(DEFAULT_PUB), sizeof(ControllerSettings.Publish));
+    safe_strncpy(ControllerSettings.MQTTLwtTopic, F(DEFAULT_MQTT_LWT_TOPIC), sizeof(ControllerSettings.MQTTLwtTopic));
+    safe_strncpy(ControllerSettings.LWTMessageConnect, F(DEFAULT_MQTT_LWT_CONNECT_MESSAGE), sizeof(ControllerSettings.LWTMessageConnect));
+    safe_strncpy(ControllerSettings.LWTMessageDisconnect, F(DEFAULT_MQTT_LWT_DISCONNECT_MESSAGE), sizeof(ControllerSettings.LWTMessageDisconnect));
+    str2ip((char*)DEFAULT_SERVER, ControllerSettings.IP);
+    ControllerSettings.setHostname(F(DEFAULT_SERVER_HOST));
+    ControllerSettings.UseDNS = DEFAULT_SERVER_USEDNS;
+    ControllerSettings.useExtendedCredentials(DEFAULT_USE_EXTD_CONTROLLER_CREDENTIALS);
+    ControllerSettings.Port = DEFAULT_PORT;
+    setControllerUser(0, ControllerSettings, F(DEFAULT_CONTROLLER_USER));
+    setControllerPass(0, ControllerSettings, F(DEFAULT_CONTROLLER_PASS));
 
-   SaveControllerSettings(0, ControllerSettings);
+    SaveControllerSettings(0, ControllerSettings);
+  }
 #endif
 
   SaveSettings();
@@ -1979,6 +1990,33 @@ void transformValue(
         switch (tempValueFormat[0])
           {
           case 'V': //value = value without transformations
+            break;
+          case 'P': // Password hide using a custom password character: Pc
+            if (tempValueFormatLength > 1)
+            {
+              if (value == F("0")) {
+                value = "";
+              } else {
+                const int valueLength = value.length();
+                for (int i = 0; i < valueLength; i++) {
+                  value[i] = tempValueFormat[1];
+                }
+              }
+            } else {
+              value = F("ERR");
+            }
+            break;
+          case 'p': // Password hide using asterisks
+            {
+              if (value == F("0")) {
+                value = "";
+              } else {
+                const int valueLength = value.length();
+                for (int i = 0; i < valueLength; i++) {
+                  value[i] = '*';
+                }
+              }
+            }
             break;
           case 'O':
             value = logicVal == 0 ? F("OFF") : F(" ON"); //(equivalent to XOR operator)

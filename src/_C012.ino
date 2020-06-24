@@ -60,7 +60,8 @@ bool CPlugin_012(CPlugin::Function function, struct EventStruct *event, String& 
             addLog(LOG_LEVEL_DEBUG_MORE, element.txt[x]);
           }
         }
-        success = C012_DelayHandler.addToQueue(element);
+        // FIXME TD-er must define a proper move operator
+        success = C012_DelayHandler.addToQueue(C012_queue_element(element));
         scheduleNextDelayQueue(TIMER_C012_DELAY_QUEUE, C012_DelayHandler.getNextScheduleTime());
         break;
       }
@@ -95,7 +96,7 @@ bool do_process_c012_delay_queue(int controller_number, const C012_queue_element
     if (element.checkDone(true))
       return true;
   }
-  if (!WiFiConnected()) {
+  if (!NetworkConnected()) {
     return false;
   }
   return element.checkDone(Blynk_get(element.txt[element.valuesSent], element.controller_idx));
