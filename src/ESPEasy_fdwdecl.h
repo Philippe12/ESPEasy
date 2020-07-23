@@ -70,9 +70,9 @@ bool     connectClient(WiFiClient& client,
 bool   useStaticIP();
 String getWifiModeString(WiFiMode_t wifimode);
 bool   NetworkConnected(uint32_t timeout_ms);
-bool   NetworkConnected();
 bool   hostReachable(const IPAddress& ip);
 bool   hostReachable(const String& hostname);
+void   updateUDPport();
 
 
 bool     I2C_read_bytes(uint8_t        i2caddr,
@@ -148,6 +148,8 @@ void taskClear(taskIndex_t taskIndex, bool save);
 void SensorSendTask(taskIndex_t TaskIndex);
 bool remoteConfig(struct EventStruct *event, const String& string);
 
+String getTaskDeviceName(taskIndex_t TaskIndex);
+
 String getControllerParameterInternalName(protocolIndex_t ProtocolIndex, ControllerSettingsStruct::VarType parameterIdx);
 void addControllerParameterForm(const ControllerSettingsStruct& ControllerSettings, controllerIndex_t controllerindex, ControllerSettingsStruct::VarType varType);
 void saveControllerParameterForm(ControllerSettingsStruct& ControllerSettings, controllerIndex_t controllerindex, ControllerSettingsStruct::VarType varType);
@@ -169,6 +171,8 @@ void SSDP_update();
 String parseTemplate(String& tmpString);
 String parseTemplate(String& tmpString, bool useURLencode);
 void parseCommandString(struct EventStruct *event, const String& string);
+
+String parseTemplate_padded(String& tmpString, byte minimal_lineSize);
 
 /*
 String parseString(const String& string, byte indexFind);
@@ -223,5 +227,7 @@ void delayBackground(unsigned long dsdelay);
 
 byte PluginCall(byte Function, struct EventStruct *event, String& str);
 bool beginWiFiUDP_randomPort(WiFiUDP& udp);
+
+uint8_t get8BitFromUL(uint32_t number, byte bitnr);
 
 #endif // ESPEASY_FWD_DECL_H
