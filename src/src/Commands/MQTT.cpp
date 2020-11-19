@@ -1,22 +1,24 @@
 #include "../../ESPEasy_common.h"
 #include "../Globals/MQTT.h"
-#include "../DataStructs/SchedulerTimers.h"
+
 #ifdef USES_MQTT
 
-#include "../Commands/MQTT.h"
+
 
 #include "../Commands/Common.h"
-#include "../Globals/Settings.h"
+#include "../Commands/MQTT.h"
+
+#include "../ESPEasyCore/Controller.h"
+#include "../ESPEasyCore/ESPEasy_Log.h"
+
 #include "../Globals/CPlugins.h"
+#include "../Globals/ESPEasy_Scheduler.h"
+#include "../Globals/Settings.h"
 
 #include "../Helpers/ESPEasy_Storage.h"
-#include "../Helpers/StringConverter.h"
 #include "../Helpers/PeriodicalActions.h"
 #include "../Helpers/Scheduler.h"
-
-#include "../../ESPEasy_fdwdecl.h"
-#include "../../ESPEasy_Log.h"
-
+#include "../Helpers/StringConverter.h"
 
 
 String Command_MQTT_Publish(struct EventStruct *event, const char *Line)
@@ -45,7 +47,7 @@ String Command_MQTT_Publish(struct EventStruct *event, const char *Line)
         return error;
       }
 
-      LoadControllerSettings(event->ControllerIndex, ControllerSettings);
+      LoadControllerSettings(enabledMqttController, ControllerSettings);
       mqtt_retainFlag = ControllerSettings.mqtt_retainFlag();
     }
 
@@ -73,7 +75,7 @@ String Command_MQTT_Publish(struct EventStruct *event, const char *Line)
 boolean MQTTsubscribe(controllerIndex_t controller_idx, const char* topic, boolean retained)
 {
   if (MQTTclient.subscribe(topic)) {
-    setIntervalTimerOverride(TIMER_MQTT, 10); // Make sure the MQTT is being processed as soon as possible.
+    Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_MQTT, 10); // Make sure the MQTT is being processed as soon as possible.
     String log = F("Subscribed to: ");  log += topic;
     addLog(LOG_LEVEL_INFO, log);
     return true;

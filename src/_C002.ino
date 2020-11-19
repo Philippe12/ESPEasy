@@ -1,5 +1,7 @@
-#include "_CPlugin_Helper.h"
+#include "src/Helpers/_CPlugin_Helper.h"
 #ifdef USES_C002
+
+#include "src/Helpers/_CPlugin_DomoticzHelper.h"
 
 // #######################################################################################################
 // ########################### Controller Plugin 002: Domoticz MQTT ######################################
@@ -10,10 +12,15 @@
 #define CPLUGIN_NAME_002       "Domoticz MQTT"
 
 #include "src/Commands/InternalCommands.h"
+#include "src/ESPEasyCore/ESPEasyRules.h"
+#include "src/Globals/Settings.h"
+#include "src/Helpers/PeriodicalActions.h"
+#include "src/Helpers/StringParser.h"
+
 #include <ArduinoJson.h>
 
 String CPlugin_002_pubname;
-bool CPlugin_002_retain = false;
+bool CPlugin_002_mqtt_retainFlag = false;
 
 bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& string)
 {
@@ -42,11 +49,13 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
 
     case CPlugin::Function::CPLUGIN_INIT:
     {
-      MakeControllerSettings(ControllerSettings);
-      LoadControllerSettings(event->ControllerIndex, ControllerSettings);
-      MQTTDelayHandler.configureControllerSettings(ControllerSettings);
-      CPlugin_002_pubname = ControllerSettings.Publish;
-      CPlugin_002_retain = ControllerSettings.mqtt_retainFlag();
+      success = init_mqtt_delay_queue(event->ControllerIndex, CPlugin_002_pubname, CPlugin_002_mqtt_retainFlag);
+      break;
+    }
+
+    case CPlugin::Function::CPLUGIN_EXIT:
+    {
+      exit_mqtt_delay_queue();
       break;
     }
 
@@ -95,7 +104,7 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
             // We need the index of the controller we are: 0...CONTROLLER_MAX
             if (Settings.TaskDeviceEnabled[x] && (Settings.TaskDeviceID[ControllerID][x] == idx)) // get idx for our controller index
             {
-              String action = "";
+              String action;
 
               switch (Settings.TaskDeviceNumber[x]) {
                 case 1: // temp solution, if input switch, update state
@@ -108,7 +117,6 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
                 }
                 case 29: // temp solution, if plugin 029, set gpio
                 {
-                  action = "";
                   int baseVar = x * VARS_PER_TASK;
 
                   if (strcasecmp_P(switchtype, PSTR("dimmer")) == 0)
@@ -120,14 +128,12 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
 
                     switch ((int)nvalue)
                     {
-                      case 0:
+                      case 0:  // Off
                         pwmValue         = 0;
                         UserVar[baseVar] = pwmValue;
                         break;
-                      case 1:
-                        pwmValue = UserVar[baseVar];
-                        break;
-                      case 2:
+                      case 1: // On
+                      case 2: // Update dimmer value
                         pwmValue         = 10 * atol(svalue1);
                         UserVar[baseVar] = pwmValue;
                         break;
@@ -138,7 +144,7 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
                     action           = F("gpio,");
                     action          += Settings.TaskDevicePin1[x];
                     action          += ',';
-                    action          += nvalue;
+                    action          += static_cast<int>(nvalue);
                   }
                   break;
                 }
@@ -156,12 +162,12 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
               }
 
               if (action.length() > 0) {
-                ExecuteCommand_plugin(x, EventValueSource::Enum::VALUE_SOURCE_MQTT, action.c_str());
+                // Try plugin and internal
+                ExecuteCommand(x, EventValueSource::Enum::VALUE_SOURCE_MQTT, action.c_str(), true, true, false);
 
                 // trigger rulesprocessing
                 if (Settings.UseRules) {
-                  struct EventStruct TempEvent;
-                  TempEvent.TaskIndex = x;
+                  struct EventStruct TempEvent(x);
                   parseCommandString(&TempEvent, action);
                   createRuleEvents(&TempEvent);
                 }
@@ -185,9 +191,11 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
         root[F("Battery")] = mapVccToDomoticz();
           #endif // if FEATURE_ADC_VCC
 
-        switch (event->sensorType)
+        const Sensor_VType sensorType = event->getSensorType();
+
+        switch (sensorType)
         {
-          case SENSOR_TYPE_SWITCH:
+          case Sensor_VType::SENSOR_TYPE_SWITCH:
             root[F("command")] = String(F("switchlight"));
 
             if (UserVar[event->BaseVarIndex] == 0) {
@@ -197,7 +205,7 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
               root[F("switchcmd")] = String(F("On"));
             }
             break;
-          case SENSOR_TYPE_DIMMER:
+          case Sensor_VType::SENSOR_TYPE_DIMMER:
             root[F("command")] = String(F("switchlight"));
 
             if (UserVar[event->BaseVarIndex] == 0) {
@@ -208,17 +216,17 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
             }
             break;
 
-          case SENSOR_TYPE_SINGLE:
-          case SENSOR_TYPE_LONG:
-          case SENSOR_TYPE_DUAL:
-          case SENSOR_TYPE_TRIPLE:
-          case SENSOR_TYPE_QUAD:
-          case SENSOR_TYPE_TEMP_HUM:
-          case SENSOR_TYPE_TEMP_BARO:
-          case SENSOR_TYPE_TEMP_EMPTY_BARO:
-          case SENSOR_TYPE_TEMP_HUM_BARO:
-          case SENSOR_TYPE_WIND:
-          case SENSOR_TYPE_STRING:
+          case Sensor_VType::SENSOR_TYPE_SINGLE:
+          case Sensor_VType::SENSOR_TYPE_LONG:
+          case Sensor_VType::SENSOR_TYPE_DUAL:
+          case Sensor_VType::SENSOR_TYPE_TRIPLE:
+          case Sensor_VType::SENSOR_TYPE_QUAD:
+          case Sensor_VType::SENSOR_TYPE_TEMP_HUM:
+          case Sensor_VType::SENSOR_TYPE_TEMP_BARO:
+          case Sensor_VType::SENSOR_TYPE_TEMP_EMPTY_BARO:
+          case Sensor_VType::SENSOR_TYPE_TEMP_HUM_BARO:
+          case Sensor_VType::SENSOR_TYPE_WIND:
+          case Sensor_VType::SENSOR_TYPE_STRING:
           default:
             root[F("nvalue")] = 0;
             root[F("svalue")] = formatDomoticzSensorType(event);
@@ -236,7 +244,7 @@ bool CPlugin_002(CPlugin::Function function, struct EventStruct *event, String& 
         String pubname = CPlugin_002_pubname;
         parseControllerVariables(pubname, event, false);
 
-        success = MQTTpublish(event->ControllerIndex, pubname.c_str(), json.c_str(), CPlugin_002_retain);
+        success = MQTTpublish(event->ControllerIndex, pubname.c_str(), json.c_str(), CPlugin_002_mqtt_retainFlag);
       } // if ixd !=0
       else
       {

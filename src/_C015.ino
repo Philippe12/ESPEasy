@@ -1,4 +1,4 @@
-#include "_CPlugin_Helper.h"
+#include "src/Helpers/_CPlugin_Helper.h"
 #ifdef USES_C015
 
 #include "src/Globals/CPlugins.h"
@@ -88,12 +88,20 @@ bool CPlugin_015(CPlugin::Function function, struct EventStruct *event, String& 
 
     case CPlugin::Function::CPLUGIN_INIT:
       {
-       // when connected to another server and user has changed settings
-       if (Blynk.connected()){
+        success = init_c015_delay_queue(event->ControllerIndex);
+
+        // when connected to another server and user has changed settings
+        if (success && Blynk.connected()){
           addLog(LOG_LEVEL_INFO, F(C015_LOG_PREFIX "disconnect from server"));
           Blynk.disconnect();
-       }
-       break;
+        }
+        break;
+      }
+
+    case CPlugin::Function::CPLUGIN_EXIT:
+      {
+        exit_c015_delay_queue();
+        break;
       }
 
     #ifdef CPLUGIN_015_SSL
@@ -142,23 +150,24 @@ bool CPlugin_015(CPlugin::Function function, struct EventStruct *event, String& 
 
      case CPlugin::Function::CPLUGIN_PROTOCOL_SEND:
       {
+        if (C015_DelayHandler == nullptr) {
+          break;
+        }
+
         if (!Settings.ControllerEnabled[event->ControllerIndex])
           break;
 
         // Collect the values at the same run, to make sure all are from the same sample
-        byte valueCount = getValueCountFromSensorType(event->sensorType);
+        byte valueCount = getValueCountForTask(event->TaskIndex);
         
         // FIXME TD-er must define a proper move operator
-        success = C015_DelayHandler.addToQueue(C015_queue_element(event, valueCount));
+        success = C015_DelayHandler->addToQueue(C015_queue_element(event, valueCount));
         if (success) {
           // Element was added.
           // Now we try to append to the existing element 
           // and thus preventing the need to create a long string only to copy it to a queue element.
-          C015_queue_element &element = C015_DelayHandler.sendQueue.back();
-          if (ExtraTaskSettings.TaskIndex != event->TaskIndex) {
-            String dummy;
-            PluginCall(PLUGIN_GET_DEVICEVALUENAMES, event, dummy);
-          }
+          C015_queue_element &element = C015_DelayHandler->sendQueue.back();
+          LoadTaskSettings(event->TaskIndex);
 
           for (byte x = 0; x < valueCount; x++)
           {
@@ -196,7 +205,7 @@ bool CPlugin_015(CPlugin::Function function, struct EventStruct *event, String& 
             element.txt[x] = formattedValue;
           }
         }
-        scheduleNextDelayQueue(TIMER_C015_DELAY_QUEUE, C015_DelayHandler.getNextScheduleTime());
+        Scheduler.scheduleNextDelayQueue(ESPEasy_Scheduler::IntervalTimer_e::TIMER_C015_DELAY_QUEUE, C015_DelayHandler->getNextScheduleTime());
         break;
       }
 

@@ -7,6 +7,18 @@
 #pragma GCC diagnostic warning "-Wall"
 #endif
 
+// Include this as first, to make sure all defines are active during the entire compile.
+// See: https://www.letscontrolit.com/forum/viewtopic.php?f=4&t=7980
+// If Custom.h build from Arduino IDE is needed, uncomment #define USE_CUSTOM_H in ESPEasy_common.h
+#include "ESPEasy_common.h"
+
+#ifdef USE_CUSTOM_H
+// make the compiler show a warning to confirm that this file is inlcuded
+  #warning "**** Using Settings from Custom.h File ***"
+#endif
+
+
+
 // Needed due to preprocessor issues.
 #ifdef PLUGIN_SET_GENERIC_ESP32
   #ifndef ESP32
@@ -88,47 +100,64 @@
 // Must be included after all the defines, since it is using TASKS_MAX
 #include "_Plugin_Helper.h"
 // Plugin helper needs the defined controller sets, thus include after 'define_plugin_sets.h'
-#include "_CPlugin_Helper.h"
+#include "src/Helpers/_CPlugin_Helper.h"
+
 
 #include "src/DataStructs/ControllerSettingsStruct.h"
-#include "src/DataStructs/DeviceModel.h"
 #include "src/DataStructs/ESPEasy_EventStruct.h"
 #include "src/DataStructs/PortStatusStruct.h"
 #include "src/DataStructs/ProtocolStruct.h"
 #include "src/DataStructs/RTCStruct.h"
-#include "src/DataStructs/SchedulerTimers.h"
-#include "src/DataStructs/SettingsType.h"
 #include "src/DataStructs/SystemTimerStruct.h"
 #include "src/DataStructs/TimingStats.h"
-
 #include "src/DataStructs/tcp_cleanup.h"
+
+#include "src/DataTypes/DeviceModel.h"
+#include "src/DataTypes/SettingsType.h"
+
+#include "src/ESPEasyCore/ESPEasy_Log.h"
+#include "src/ESPEasyCore/ESPEasyNetwork.h"
+#include "src/ESPEasyCore/ESPEasyRules.h"
+#include "src/ESPEasyCore/ESPEasyWifi.h"
+#include "src/ESPEasyCore/ESPEasyWiFi_credentials.h"
+#include "src/ESPEasyCore/ESPEasyWifi_ProcessEvent.h"
+#include "src/ESPEasyCore/Serial.h"
 
 #include "src/Globals/CPlugins.h"
 #include "src/Globals/Device.h"
 #include "src/Globals/ESPEasyWiFiEvent.h"
-#include "src/Globals/ExtraTaskSettings.h"
+#include "src/Globals/ESPEasy_Scheduler.h"
+#include "src/Globals/ESPEasy_time.h"
 #include "src/Globals/EventQueue.h"
+#include "src/Globals/ExtraTaskSettings.h"
 #include "src/Globals/GlobalMapPortStatus.h"
 #include "src/Globals/MQTT.h"
+#include "src/Globals/NetworkState.h"
 #include "src/Globals/Plugins.h"
 #include "src/Globals/Protocol.h"
-#include "src/Globals/RamTracker.h"
 #include "src/Globals/RTC.h"
+#include "src/Globals/RamTracker.h"
 #include "src/Globals/SecuritySettings.h"
 #include "src/Globals/Services.h"
 #include "src/Globals/Settings.h"
 #include "src/Globals/Statistics.h"
 
+#include "src/Helpers/DeepSleep.h"
+#include "src/Helpers/ESPEasyRTC.h"
+#include "src/Helpers/ESPEasy_FactoryDefault.h"
+#include "src/Helpers/ESPEasy_Storage.h"
 #include "src/Helpers/ESPEasy_checks.h"
 #include "src/Helpers/Hardware.h"
-#include "src/Helpers/Scheduler.h"
-#include "src/Helpers/ESPEasy_Storage.h"
-#include "src/Helpers/DeepSleep.h"
+#include "src/Helpers/Memory.h"
+#include "src/Helpers/Misc.h"
+#include "src/Helpers/Network.h"
+#include "src/Helpers/Networking.h"
+#include "src/Helpers/OTA.h"
 #include "src/Helpers/PeriodicalActions.h"
+#include "src/Helpers/Scheduler.h"
+#include "src/Helpers/StringGenerator_System.h"
 
-#include "ESPEasyWiFi_credentials.h"
-#include "ESPEasyWifi_ProcessEvent.h"
-#include "ESPEasyWifi.h"
+#include "src/WebServer/WebServer.h"
 
 #if FEATURE_ADC_VCC
 ADC_MODE(ADC_VCC);
@@ -155,7 +184,7 @@ void preinit() {
 /*********************************************************************************************\
  * ISR call back function for handling the watchdog.
 \*********************************************************************************************/
-void sw_watchdog_callback(void *arg) 
+void sw_watchdog_callback(void *arg)
 {
   yield(); // feed the WD
   ++sw_watchdog_callback_count;
@@ -185,7 +214,7 @@ void setup()
   // Read ADC at boot, before WiFi tries to connect.
   // see https://github.com/letscontrolit/ESPEasy/issues/2646
 #if FEATURE_ADC_VCC
-  vcc = ESP.getVcc() / 1000.0;
+  vcc = ESP.getVcc() / 1000.0f;
 #endif
 #ifdef ESP8266
   lastADCvalue = analogRead(A0);
@@ -249,8 +278,8 @@ void setup()
     }
 
     log += RTC.bootCounter;
-    log += F(" Last Task: ");
-    log += decodeSchedulerId(lastMixedSchedulerId_beforereboot);
+    log += F(" Last Action before Reboot: ");
+    log += ESPEasy_Scheduler::decodeSchedulerId(lastMixedSchedulerId_beforereboot);
     log += F(" Last systime: ");
     log += RTC.lastSysTime;
   }
@@ -294,12 +323,9 @@ void setup()
   #ifdef HAS_ETHERNET
   // This ensures, that changing WIFI OR ETHERNET MODE happens properly only after reboot. Changing without reboot would not be a good idea.
   // This only works after LoadSettings();
-  eth_wifi_mode = Settings.ETH_Wifi_Mode;
+  active_network_medium = Settings.NetworkMedium;
   log = F("INIT : ETH_WIFI_MODE:");
-  log += String(eth_wifi_mode);
-  log += F(" (");
-  log += (eth_wifi_mode == WIFI ? F("WIFI") : F("ETHERNET"));
-  log += F(")");
+  log += toString(active_network_medium);
   addLog(LOG_LEVEL_INFO, log);
   #endif
 
@@ -315,7 +341,7 @@ void setup()
     }
   }
   if (!selectValidWiFiSettings()) {
-    wifiSetup = true;
+    WiFiEventData.wifiSetup = true;
     RTC.lastWiFiChannel = 0; // Must scan all channels
     // Wait until scan has finished to make sure as many as possible are found
     // We're still in the setup phase, so nothing else is taking resources of the ESP.
@@ -440,12 +466,12 @@ void setup()
   // Start the interval timers at N msec from now.
   // Make sure to start them at some time after eachother,
   // since they will keep running at the same interval.
-  setIntervalTimerOverride(TIMER_20MSEC,  5); // timer for periodic actions 50 x per/sec
-  setIntervalTimerOverride(TIMER_100MSEC, 66); // timer for periodic actions 10 x per/sec
-  setIntervalTimerOverride(TIMER_1SEC,    777); // timer for periodic actions once per/sec
-  setIntervalTimerOverride(TIMER_30SEC,   1333); // timer for watchdog once per 30 sec
-  setIntervalTimerOverride(TIMER_MQTT,    88); // timer for interaction with MQTT
-  setIntervalTimerOverride(TIMER_STATISTICS, 2222);
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_20MSEC,  5); // timer for periodic actions 50 x per/sec
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_100MSEC, 66); // timer for periodic actions 10 x per/sec
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_1SEC,    777); // timer for periodic actions once per/sec
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_30SEC,   1333); // timer for watchdog once per 30 sec
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_MQTT,    88); // timer for interaction with MQTT
+  Scheduler.setIntervalTimerOverride(ESPEasy_Scheduler::IntervalTimer_e::TIMER_STATISTICS, 2222);
 }
 
 #ifdef USE_RTOS_MULTITASKING
@@ -480,7 +506,7 @@ void RTOS_Task10ps( void * parameter )
 void RTOS_HandleSchedule( void * parameter )
 {
  while (true){
-    handle_schedule();
+    Scheduler.handle_schedule();
  }
 }
 
@@ -513,7 +539,7 @@ void updateLoopStats() {
 
 
 float getCPUload() {
-  return 100.0 - msecTimerHandler.getIdleTimePct();
+  return 100.0f - Scheduler.getIdleTimePct();
 }
 
 int getLoopCountPerSec() {
@@ -537,14 +563,16 @@ void loop()
 
   updateLoopStats();
 
-  #ifdef HAS_ETHERNET
-  // Handle WiFiEvents when compiled with HAS_ETHERNET but in WiFi Mode eth_wifi_mode (WIFI = 0, ETHERNET = 1)
-  if(eth_wifi_mode == WIFI) {
-    handle_unprocessedWiFiEvents();
+  switch (active_network_medium) {
+    case NetworkMedium_t::WIFI:
+      handle_unprocessedWiFiEvents();
+      break;
+    case NetworkMedium_t::Ethernet:
+      if (NetworkConnected()) {
+        updateUDPport();
+      }
+      break;
   }
-  #else
-  handle_unprocessedWiFiEvents();
-  #endif
 
   bool firstLoopConnectionsEstablished = NetworkConnected() && firstLoop;
   if (firstLoopConnectionsEstablished) {
@@ -588,7 +616,7 @@ void loop()
   {
     if (!UseRTOSMultitasking) {
       // On ESP32 the schedule is executed on the 2nd core.
-      handle_schedule();
+      Scheduler.handle_schedule();
     }
   }
 
@@ -613,14 +641,14 @@ void flushAndDisconnectAllClients() {
       if (mqttControllerEnabled && MQTTclient.connected()) {
         MQTTclient.loop();
       }
-#endif //USES_MQTT      
+#endif //USES_MQTT
     }
-#ifdef USES_MQTT    
+#ifdef USES_MQTT
     if (mqttControllerEnabled && MQTTclient.connected()) {
       MQTTclient.disconnect();
       updateMQTTclient_connected();
     }
-#endif //USES_MQTT      
+#endif //USES_MQTT
     saveToRTC();
     delay(100); // Flush anything in the network buffers.
   }
