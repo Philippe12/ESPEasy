@@ -6,6 +6,8 @@
 #include "../WebServer/Markup_Forms.h"
 #include "../WebServer/HTML_wrappers.h"
 
+#include "../Globals/RuntimeData.h"
+
 #include "../Helpers/StringConverter.h"
 #include "../Helpers/SystemVariables.h"
 
@@ -117,6 +119,7 @@ void handle_sysvars() {
   addSysVar_enum_html(SystemVariables::SYSWEEKDAY_S);
   addTableSeparator(F("System"), 3, 3);
   addSysVar_enum_html(SystemVariables::UPTIME);
+  addSysVar_enum_html(SystemVariables::UPTIME_MS);
   addSysVar_enum_html(SystemVariables::UNIXTIME);
   addSysVar_enum_html(SystemVariables::UNIXDAY);
   addSysVar_enum_html(SystemVariables::UNIXDAY_SEC);
@@ -127,8 +130,16 @@ void handle_sysvars() {
 
   addTableSeparator(F("Custom Variables"), 3, 3);
 
-  for (byte i = 0; i < CUSTOM_VARS_MAX; ++i) {
-    addSysVar_html("%v" + toString(i + 1, 0) + '%');
+  bool customVariablesAdded = false;
+  for (auto it = customFloatVar.begin(); it != customFloatVar.end(); ++it) {
+    addSysVar_html("%v" + String(it->first) + '%');
+    customVariablesAdded = true;
+  }
+  if (!customVariablesAdded) {
+    html_TR_TD();
+    addHtml(F("No variables set"));
+    html_TD();
+    html_TD();
   }
 #ifndef BUILD_NO_SPECIAL_CHARACTERS_STRINGCONVERTER
   addTableSeparator(F("Special Characters"), 3, 2);

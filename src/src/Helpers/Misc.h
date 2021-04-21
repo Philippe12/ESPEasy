@@ -10,8 +10,9 @@
 
 #include "../../ESPEasy_common.h"
 
-
-
+#ifdef FEATURE_SD
+#include <SD.h>
+#endif
 
 bool remoteConfig(struct EventStruct *event,
                   const String      & string);
@@ -114,17 +115,6 @@ String getTaskDeviceName(taskIndex_t TaskIndex);
 void emergencyReset();
 
 
-void logtimeStringToSeconds(const String& tBuf,
-                            int           hours,
-                            int           minutes,
-                            int           seconds);
-
-// convert old and new time string to nr of seconds
-// return whether it should be considered a time string.
-bool timeStringToSeconds(const String& tBuf,
-                         int         & time_seconds);
-
-
 /********************************************************************************************\
    Delayed reboot, in case of issues, do not reboot with high frequency as it might not help...
  \*********************************************************************************************/
@@ -132,6 +122,7 @@ void delayedReboot(int rebootDelay, ESPEasy_Scheduler::IntendedRebootReason_e re
 
 void reboot(ESPEasy_Scheduler::IntendedRebootReason_e reason);
 
+void FeedSW_watchdog();
 
 void SendValueLogger(taskIndex_t TaskIndex);
 

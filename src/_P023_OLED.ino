@@ -65,6 +65,8 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
 
     case PLUGIN_WEBFORM_LOAD:
     {
+      addFormCheckBox(F("Use SH1106 controller"), F("p023_use_sh1106"), PCONFIG(5));
+
       {
         byte choice2         = PCONFIG(1);
         String options2[2]   = { F("Normal"), F("Rotated") };
@@ -109,6 +111,8 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
       PCONFIG(2) = getFormItemInt(F("plugin_23_timer"));
       PCONFIG(3) = getFormItemInt(F("p023_size"));
       PCONFIG(4) = getFormItemInt(F("p023_font_spacing"));
+      PCONFIG(5) = isFormItemChecked(F("p023_use_sh1106"));
+
 
       // FIXME TD-er: This is a huge stack allocated object.
       char   deviceTemplate[P23_Nlines][P23_Nchars];
@@ -135,6 +139,8 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
       byte type                              = 0;
       P023_data_struct::Spacing font_spacing = P023_data_struct::Spacing::normal;
       byte displayTimer                      = PCONFIG(2);
+      byte use_sh1106                        = PCONFIG(5);
+
 
       switch (PCONFIG(3)) {
         case 1:
@@ -161,7 +167,7 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
           break;
       }
 
-      initPluginTaskData(event->TaskIndex, new (std::nothrow) P023_data_struct(address, type, font_spacing, displayTimer));
+      initPluginTaskData(event->TaskIndex, new (std::nothrow) P023_data_struct(address, type, font_spacing, displayTimer, use_sh1106));
       P023_data_struct *P023_data =
         static_cast<P023_data_struct *>(getPluginTaskData(event->TaskIndex));
 
@@ -241,54 +247,27 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
         static_cast<P023_data_struct *>(getPluginTaskData(event->TaskIndex));
 
       if (nullptr != P023_data) {
-        String arguments = String(string);
+        String cmd = parseString(string, 1); // Changes to lowercase
 
-        // Fixed bug #1864
-        // this was to manage multiple instances of the plug-in.
-        // You can also call it this way:
-        // [TaskName].OLED, 1,1, Temp. is 19.9
-        int dotPos = arguments.indexOf('.');
-
-        if ((dotPos > -1) && arguments.substring(dotPos, dotPos + 4).equalsIgnoreCase(F("oled")))
-        {
-          LoadTaskSettings(event->TaskIndex);
-          String name = arguments.substring(0, dotPos);
-          name.replace("[", "");
-          name.replace("]", "");
-
-          if (name.equalsIgnoreCase(getTaskDeviceName(event->TaskIndex)) == true)
-          {
-            arguments = arguments.substring(dotPos + 1);
-          }
-          else
-          {
-            return false;
-          }
-        }
-
-        // We now continue using 'arguments' and not 'string' as full command line.
-        // If there was any prefix to address a specific task, it is now removed from 'arguments'
-        String cmd = parseString(arguments, 1);
-
-        if (cmd.equalsIgnoreCase(F("OLEDCMD")))
+        if (cmd.equals(F("oledcmd")))
         {
           success = true;
-          String param = parseString(arguments, 2);
+          String param = parseString(string, 2);
 
-          if (param.equalsIgnoreCase(F("Off"))) {
+          if (param.equals(F("off"))) {
             P023_data->displayOff();
           }
-          else if (param.equalsIgnoreCase(F("On"))) {
+          else if (param.equals(F("on"))) {
             P023_data->displayOn();
           }
-          else if (param.equalsIgnoreCase(F("Clear"))) {
+          else if (param.equals(F("clear"))) {
             P023_data->clearDisplay();
           }
         }
-        else if (cmd.equalsIgnoreCase(F("OLED")))
+        else if (cmd.equals(F("oled")))
         {
           success = true;
-          String text = parseStringToEndKeepCase(arguments, 4);
+          String text = parseStringToEndKeepCase(string, 4);
           text = P023_data->parseTemplate(text, 16);
           P023_data->sendStrXY(text.c_str(), event->Par1 - 1, event->Par2 - 1);
         }

@@ -5,6 +5,8 @@
 #include "../WebServer/HTML_wrappers.h"
 
 #include "../ESPEasyCore/ESPEasyWifi.h"
+#include "../Globals/WiFi_AP_Candidates.h"
+#include "../Helpers/StringGenerator_WiFi.h"
 
 
 #ifdef WEBSERVER_NEW_UI
@@ -20,35 +22,15 @@ void handle_wifiscanner_json() {
   if (!isLoggedIn()) { return; }
   navMenuIndex = MENU_INDEX_TOOLS;
   TXBuffer.startJsonStream();
-  addHtml("[{");
+  addHtml(F("[{"));
   bool firstentry = true;
   int  n          = WiFi.scanNetworks(false, true);
 
   for (int i = 0; i < n; ++i)
   {
     if (firstentry) { firstentry = false; }
-    else { addHtml(",{"); }
-    String authType;
-
-    switch (WiFi.encryptionType(i)) {
-    # ifdef ESP32
-      case WIFI_AUTH_OPEN: authType            = F("open"); break;
-      case WIFI_AUTH_WEP:  authType            = F("WEP"); break;
-      case WIFI_AUTH_WPA_PSK: authType         = F("WPA/PSK"); break;
-      case WIFI_AUTH_WPA2_PSK: authType        = F("WPA2/PSK"); break;
-      case WIFI_AUTH_WPA_WPA2_PSK: authType    = F("WPA/WPA2/PSK"); break;
-      case WIFI_AUTH_WPA2_ENTERPRISE: authType = F("WPA2 Enterprise"); break;
-    # else // ifdef ESP32
-      case ENC_TYPE_WEP:  authType = F("WEP"); break;
-      case ENC_TYPE_TKIP: authType = F("WPA/PSK"); break;
-      case ENC_TYPE_CCMP: authType = F("WPA2/PSK"); break;
-      case ENC_TYPE_NONE: authType = F("open"); break;
-      case ENC_TYPE_AUTO: authType = F("WPA/WPA2/PSK"); break;
-    # endif // ifdef ESP32
-      default:
-        break;
-    }
-
+    else { addHtml(F(",{")); }
+    String authType = WiFi_encryptionType(WiFi.encryptionType(i));
     if (authType.length() > 0) {
       stream_next_json_object_value(F("auth"), authType);
     }
@@ -58,9 +40,9 @@ void handle_wifiscanner_json() {
     stream_last_json_object_value(getLabel(LabelType::WIFI_RSSI), String(WiFi.RSSI(i)));
   }
   if (firstentry) {
-    addHtml("}");
+    addHtml('}');
   }
-  addHtml("]");
+  addHtml(']');
   TXBuffer.endStream();
 }
 
@@ -76,7 +58,8 @@ void handle_wifiscanner() {
   if (!isLoggedIn()) { return; }
 
   WiFiMode_t cur_wifimode = WiFi.getMode();
-  WifiScan(false, false);
+  WifiScan(false);
+  int8_t scanCompleteStatus = WiFi_AP_Candidates.scanComplete();
   setWifiMode(cur_wifimode);
 
   navMenuIndex = MENU_INDEX_TOOLS;
@@ -89,20 +72,17 @@ void handle_wifiscanner() {
   html_table_header(F("Network info"));
   html_table_header(F("RSSI"), 50);
 
-  const int8_t scanCompleteStatus = WiFi.scanComplete();
-
   if (scanCompleteStatus <= 0) {
     addHtml(F("No Access Points found"));
   }
   else
   {
-    for (int i = 0; i < scanCompleteStatus; ++i)
+    for (auto it = WiFi_AP_Candidates.scanned_begin(); it != WiFi_AP_Candidates.scanned_end(); ++it)
     {
       html_TR_TD();
-      int32_t rssi = 0;
-      addHtml(formatScanResult(i, "<TD>", rssi));
+      addHtml(it->toString(F("<TD>")));
       html_TD();
-      getWiFi_RSSI_icon(rssi, 45);
+      getWiFi_RSSI_icon(it->rssi, 45);
     }
   }
 
